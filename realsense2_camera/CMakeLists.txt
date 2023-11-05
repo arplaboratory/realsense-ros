@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(realsense2_camera)
-add_compile_options(-std=c++11)
+add_compile_options(-std=c++17)
 
 option(BUILD_WITH_OPENMP "Use OpenMP" OFF)
 option(SET_USER_BREAK_AT_STARTUP "Set user wait point in startup (for debug)" OFF)
@@ -127,7 +127,7 @@ target_link_libraries(${PROJECT_NAME}
 if(WIN32)
 set_target_properties(${realsense2_LIBRARY} PROPERTIES MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
 target_link_libraries(${PROJECT_NAME}
-    realsense2::realsense2 
+    realsense2::realsense2
     realsense2::realsense-file
     )
 endif()
