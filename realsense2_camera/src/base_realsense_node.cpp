@@ -463,12 +463,23 @@ void BaseRealSenseNode::registerDynamicOption(ros::NodeHandle& nh, rs2::options 
                 auto option_value = bool(sensor.get_option(option));
                 if (nh1.param(option_name, option_value, option_value))
                 {
+                    std::cout << option_name<< " " << option_value << std::endl;
                     sensor.set_option(option, option_value);
+                    if (i == RS2_OPTION_EMITTER_ON_OFF) {
+                        _emitter_on_off = option_value;
+                    }
                 }
-                ddynrec->registerVariable<bool>(
-                option_name, option_value,
-                [option, sensor](bool new_value) { sensor.set_option(option, new_value); },
-                sensor.get_option_description(option));
+                if (i == RS2_OPTION_EMITTER_ON_OFF) {
+                    ddynrec->registerVariable<bool>(
+                    option_name, option_value,
+                    [option, sensor, this](bool new_value) { sensor.set_option(option, new_value); this->_emitter_on_off=new_value;},
+                    sensor.get_option_description(option));
+                } else {
+                    ddynrec->registerVariable<bool>(
+                    option_name, option_value,
+                    [option, sensor](bool new_value) { sensor.set_option(option, new_value); },
+                    sensor.get_option_description(option));
+                }
                 continue;
             }
             const auto enum_dict = get_enum_method(sensor, option);
@@ -728,6 +739,7 @@ void BaseRealSenseNode::getParameters()
       ROS_INFO_STREAM("Infrared RGB stream enabled");
     }
 
+    _pnh.param("emitter_on_off", _emitter_on_off, false);
     _pnh.param("align_depth", _align_depth, ALIGN_DEPTH);
     _pnh.param("enable_pointcloud", _pointcloud, POINTCLOUD);
     std::string pc_texture_stream("");
@@ -865,6 +877,7 @@ void BaseRealSenseNode::setupDevice()
         ROS_INFO_STREAM("Enable PointCloud: " << ((_pointcloud)?"On":"Off"));
         ROS_INFO_STREAM("Align Depth: " << ((_align_depth)?"On":"Off"));
         ROS_INFO_STREAM("Sync Mode: " << ((_sync_frames)?"On":"Off"));
+        ROS_INFO_STREAM("Emitter On Off: " << ((_emitter_on_off)?"On":"Off"));
 
         _dev_sensors = _dev.query_sensors();
 
@@ -2405,6 +2418,21 @@ void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
     if(0 != info_publisher.getNumSubscribers() ||
        0 != image_publisher.first.getNumSubscribers())
     {
+        bool publish_this_frame = true;
+        if (_emitter_on_off) {
+        //{
+        if (f.supports_frame_metadata((rs2_frame_metadata_value)(RS2_FRAME_METADATA_FRAME_EMITTER_MODE)))
+        {
+            rs2_frame_metadata_value mparam = (rs2_frame_metadata_value)(RS2_FRAME_METADATA_FRAME_EMITTER_MODE);
+            bool emitter_off = (f.get_frame_metadata(mparam) == 0);
+            if (emitter_off && stream.first == RS2_STREAM_DEPTH || (!emitter_off && stream.first == RS2_STREAM_INFRARED )) {
+                publish_this_frame = false;
+            }
+        }
+        }
+
+        if (publish_this_frame) {
+
         auto& cam_info = camera_info.at(stream);
         if (cam_info.width != width)
         {
@@ -2426,7 +2454,9 @@ void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
 
         image_publisher.first.publish(img);
         ROS_DEBUG("%s stream published", rs2_stream_to_string(f.get_profile().stream_type()));
+        }
     }
+
     if (is_publishMetadata)
     {
         auto& cam_info = camera_info.at(stream);
